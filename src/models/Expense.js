@@ -69,7 +69,8 @@ const Expense = sequelize.define(
     },
   },
   {
-    tableName: "expenses",
+    tableName: "Expense", // exact table name
+    freezeTableName: true, // disables pluralization
     timestamps: true,
   }
 );
