@@ -31,21 +31,7 @@ const ExpenseCategory = require("./ExpenseCategory");
 const ExpenseReport = require("./ExpenseReport");
 const TaxConfiguration = require("./TaxConfiguration");
 
-// Define associations
-User.hasOne(Teacher, { foreignKey: "userId", as: "teacherProfile" });
-Teacher.belongsTo(User, { foreignKey: "userId", as: "user" });
-Teacher.hasMany(Attendance, {
-  foreignKey: "teacherId",
-  as: "attendanceRecords",
-});
-Attendance.belongsTo(Teacher, { foreignKey: "teacherId", as: "teacher" });
-Teacher.hasMany(Leave, { foreignKey: "teacherId", as: "leaves" });
-Leave.belongsTo(Teacher, { foreignKey: "teacherId", as: "teacher" });
-User.hasMany(FeeStructure, {
-  foreignKey: "createdBy",
-  as: "createdFeeStructures",
-});
-FeeStructure.belongsTo(User, { foreignKey: "createdBy", as: "creator" });
+
 
 // ========== HR ASSOCIATIONS ==========
 User.hasOne(Teacher, { foreignKey: "userId", as: "teacherProfile" });
