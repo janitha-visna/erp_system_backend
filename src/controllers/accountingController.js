@@ -17,7 +17,7 @@ const {
 } = require("../models");
 
 const { Op } = require("sequelize");
-const sequelize = require("../config/database"); 
+const sequelize = require("../config/database");
 
 class AccountingController {
   // ========== CUSTOMER MANAGEMENT ==========
@@ -1172,5 +1172,751 @@ class AccountingController {
       });
     }
   }
+
+  // ========== MISSING METHODS TO ADD ==========
+  async updateCustomer(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const customer = await Customer.findByPk(id);
+      if (!customer) {
+        return res.status(404).json({
+          success: false,
+          message: "Customer not found",
+        });
+      }
+
+      await customer.update(updateData);
+
+      res.json({
+        success: true,
+        message: "Customer updated successfully",
+        data: customer,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error updating customer",
+        error: error.message,
+      });
+    }
+  }
+
+  async getVendorDetails(req, res) {
+    try {
+      const { id } = req.params;
+
+      const vendor = await Vendor.findByPk(id, {
+        include: [
+          {
+            model: VendorBill,
+            as: "bills",
+            attributes: [
+              "id",
+              "billNumber",
+              "billDate",
+              "dueDate",
+              "totalAmount",
+              "balanceDue",
+              "status",
+            ],
+            order: [["billDate", "DESC"]],
+            limit: 10,
+          },
+          {
+            model: VendorPayment,
+            as: "payments",
+            attributes: [
+              "id",
+              "paymentNumber",
+              "paymentDate",
+              "amount",
+              "paymentMethod",
+            ],
+            order: [["paymentDate", "DESC"]],
+            limit: 10,
+          },
+        ],
+      });
+
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          message: "Vendor not found",
+        });
+      }
+
+      // Calculate vendor statistics
+      const totalBills = await VendorBill.sum("totalAmount", {
+        where: { vendorId: id },
+      });
+
+      const totalPaid = await VendorPayment.sum("amount", {
+        where: { vendorId: id, status: "completed" },
+      });
+
+      const outstandingBalance = await VendorBill.sum("balanceDue", {
+        where: {
+          vendorId: id,
+          status: { [Op.in]: ["received", "approved", "partial", "overdue"] },
+        },
+      });
+
+      res.json({
+        success: true,
+        data: {
+          ...vendor.toJSON(),
+          statistics: {
+            totalBills: totalBills || 0,
+            totalPaid: totalPaid || 0,
+            outstandingBalance: outstandingBalance || 0,
+          },
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching vendor details",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateVendor(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const vendor = await Vendor.findByPk(id);
+      if (!vendor) {
+        return res.status(404).json({
+          success: false,
+          message: "Vendor not found",
+        });
+      }
+
+      await vendor.update(updateData);
+
+      res.json({
+        success: true,
+        message: "Vendor updated successfully",
+        data: vendor,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error updating vendor",
+        error: error.message,
+      });
+    }
+  }
+
+  async getInvoiceDetails(req, res) {
+    try {
+      const { id } = req.params;
+
+      const invoice = await CustomerInvoice.findByPk(id, {
+        include: [
+          {
+            model: Customer,
+            as: "customer",
+            attributes: ["id", "name", "customerCode", "email", "phone"],
+          },
+          {
+            model: CustomerPayment,
+            as: "payments",
+            attributes: [
+              "id",
+              "paymentNumber",
+              "paymentDate",
+              "amount",
+              "paymentMethod",
+              "referenceNumber",
+            ],
+          },
+        ],
+      });
+
+      if (!invoice) {
+        return res.status(404).json({
+          success: false,
+          message: "Invoice not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        data: invoice,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching invoice details",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateCustomerInvoice(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const invoice = await CustomerInvoice.findByPk(id);
+      if (!invoice) {
+        return res.status(404).json({
+          success: false,
+          message: "Invoice not found",
+        });
+      }
+
+      await invoice.update(updateData);
+
+      res.json({
+        success: true,
+        message: "Invoice updated successfully",
+        data: invoice,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error updating invoice",
+        error: error.message,
+      });
+    }
+  }
+
+  async getVendorBills(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        status,
+        vendorId,
+        startDate,
+        endDate,
+      } = req.query;
+      const offset = (page - 1) * limit;
+
+      const whereCondition = {};
+      if (status) whereCondition.status = status;
+      if (vendorId) whereCondition.vendorId = vendorId;
+      if (startDate && endDate) {
+        whereCondition.billDate = {
+          [Op.between]: [startDate, endDate],
+        };
+      }
+
+      const { count, rows: bills } = await VendorBill.findAndCountAll({
+        where: whereCondition,
+        include: [
+          {
+            model: Vendor,
+            as: "vendor",
+            attributes: ["id", "name", "vendorCode"],
+          },
+        ],
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        order: [["billDate", "DESC"]],
+      });
+
+      res.json({
+        success: true,
+        data: bills,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(count / limit),
+          totalItems: count,
+          itemsPerPage: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching vendor bills",
+        error: error.message,
+      });
+    }
+  }
+  async updateVendorBill(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const bill = await VendorBill.findByPk(id);
+      if (!bill) {
+        return res.status(404).json({
+          success: false,
+          message: "Vendor bill not found",
+        });
+      }
+
+      await bill.update(updateData);
+
+      res.json({
+        success: true,
+        message: "Vendor bill updated successfully",
+        data: bill,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error updating vendor bill",
+        error: error.message,
+      });
+    }
+  }
+
+  async getCustomerPayments(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 10,
+        customerId,
+        startDate,
+        endDate,
+      } = req.query;
+      const offset = (page - 1) * limit;
+
+      const whereCondition = {};
+      if (customerId) whereCondition.customerId = customerId;
+      if (startDate && endDate) {
+        whereCondition.paymentDate = {
+          [Op.between]: [startDate, endDate],
+        };
+      }
+
+      const { count, rows: payments } = await CustomerPayment.findAndCountAll({
+        where: whereCondition,
+        include: [
+          {
+            model: Customer,
+            as: "customer",
+            attributes: ["id", "name", "customerCode"],
+          },
+          {
+            model: CustomerInvoice,
+            as: "invoice",
+            attributes: ["id", "invoiceNumber"],
+          },
+        ],
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        order: [["paymentDate", "DESC"]],
+      });
+
+      res.json({
+        success: true,
+        data: payments,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(count / limit),
+          totalItems: count,
+          itemsPerPage: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching customer payments",
+        error: error.message,
+      });
+    }
+  }
+
+  async getVendorPayments(req, res) {
+    try {
+      const { page = 1, limit = 10, vendorId, startDate, endDate } = req.query;
+      const offset = (page - 1) * limit;
+
+      const whereCondition = {};
+      if (vendorId) whereCondition.vendorId = vendorId;
+      if (startDate && endDate) {
+        whereCondition.paymentDate = {
+          [Op.between]: [startDate, endDate],
+        };
+      }
+
+      const { count, rows: payments } = await VendorPayment.findAndCountAll({
+        where: whereCondition,
+        include: [
+          {
+            model: Vendor,
+            as: "vendor",
+            attributes: ["id", "name", "vendorCode"],
+          },
+          {
+            model: VendorBill,
+            as: "bill",
+            attributes: ["id", "billNumber"],
+          },
+        ],
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        order: [["paymentDate", "DESC"]],
+      });
+
+      res.json({
+        success: true,
+        data: payments,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(count / limit),
+          totalItems: count,
+          itemsPerPage: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching vendor payments",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateBankAccount(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const account = await BankAccount.findByPk(id);
+      if (!account) {
+        return res.status(404).json({
+          success: false,
+          message: "Bank account not found",
+        });
+      }
+
+      await account.update(updateData);
+
+      res.json({
+        success: true,
+        message: "Bank account updated successfully",
+        data: account,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error updating bank account",
+        error: error.message,
+      });
+    }
+  }
+
+  async createCashAccount(req, res) {
+    try {
+      const accountData = req.body;
+
+      const account = await CashAccount.create(accountData);
+
+      res.status(201).json({
+        success: true,
+        message: "Cash account created successfully",
+        data: account,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error creating cash account",
+        error: error.message,
+      });
+    }
+  }
+  async getCashAccounts(req, res) {
+    try {
+      const accounts = await CashAccount.findAll({
+        where: { isActive: true },
+        order: [["accountName", "ASC"]],
+      });
+
+      res.json({
+        success: true,
+        data: accounts,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching cash accounts",
+        error: error.message,
+      });
+    }
+  }
+
+  async updateExpenseCategory(req, res) {
+    try {
+      const { id } = req.params;
+      const updateData = req.body;
+
+      const category = await ExpenseCategory.findByPk(id);
+      if (!category) {
+        return res.status(404).json({
+          success: false,
+          message: "Expense category not found",
+        });
+      }
+
+      await category.update(updateData);
+
+      res.json({
+        success: true,
+        message: "Expense category updated successfully",
+        data: category,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error updating expense category",
+        error: error.message,
+      });
+    }
+  }
+
+  async getExpenseReports(req, res) {
+    try {
+      const { page = 1, limit = 10, status, userId } = req.query;
+      const offset = (page - 1) * limit;
+
+      const whereCondition = {};
+      if (status) whereCondition.status = status;
+      if (userId) whereCondition.userId = userId;
+
+      const { count, rows: reports } = await ExpenseReport.findAndCountAll({
+        where: whereCondition,
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "name", "email"],
+          },
+        ],
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        order: [["createdAt", "DESC"]],
+      });
+
+      res.json({
+        success: true,
+        data: reports,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(count / limit),
+          totalItems: count,
+          itemsPerPage: parseInt(limit),
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching expense reports",
+        error: error.message,
+      });
+    }
+  }
+
+  async getExpenseReportDetails(req, res) {
+    try {
+      const { id } = req.params;
+
+      const report = await ExpenseReport.findByPk(id, {
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "name", "email"],
+          },
+          {
+            model: Expense,
+            as: "expenses",
+            include: [
+              {
+                model: ExpenseCategory,
+                as: "category",
+                attributes: ["id", "categoryName", "categoryCode"],
+              },
+            ],
+          },
+        ],
+      });
+
+      if (!report) {
+        return res.status(404).json({
+          success: false,
+          message: "Expense report not found",
+        });
+      }
+
+      res.json({
+        success: true,
+        data: report,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching expense report details",
+        error: error.message,
+      });
+    }
+  }
+
+  async getTaxConfigurations(req, res) {
+    try {
+      const configurations = await TaxConfiguration.findAll({
+        order: [["taxType", "ASC"]],
+      });
+
+      res.json({
+        success: true,
+        data: configurations,
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching tax configurations",
+        error: error.message,
+      });
+    }
+  }
+
+  async getIncomeStatement(req, res) {
+    try {
+      const { startDate, endDate } = req.query;
+
+      // This is a simplified implementation - you'll want to expand this
+      const revenue = await CustomerPayment.sum("amount", {
+        where: {
+          paymentDate: { [Op.between]: [startDate, endDate] },
+          status: "completed",
+        },
+      });
+
+      const expenses = await VendorPayment.sum("amount", {
+        where: {
+          paymentDate: { [Op.between]: [startDate, endDate] },
+          status: "completed",
+        },
+      });
+
+      const netIncome = revenue - expenses;
+
+      res.json({
+        success: true,
+        data: {
+          revenue: revenue || 0,
+          expenses: expenses || 0,
+          netIncome,
+          period: { startDate, endDate },
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error generating income statement",
+        error: error.message,
+      });
+    }
+  }
+
+  async getBalanceSheet(req, res) {
+    try {
+      const { asOfDate } = req.query;
+
+      // Simplified implementation
+      const assets = await BankAccount.sum("currentBalance", {
+        where: { isActive: true },
+      });
+
+      const liabilities = await VendorBill.sum("balanceDue", {
+        where: {
+          status: { [Op.in]: ["received", "approved", "partial", "overdue"] },
+        },
+      });
+
+      const equity = assets - liabilities;
+
+      res.json({
+        success: true,
+        data: {
+          assets: assets || 0,
+          liabilities: liabilities || 0,
+          equity,
+          asOfDate,
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error generating balance sheet",
+        error: error.message,
+      });
+    }
+  }
+
+  async getAccountingDashboard(req, res) {
+    try {
+      const totalRevenue = await CustomerPayment.sum("amount", {
+        where: { status: "completed" },
+      });
+
+      const totalExpenses = await VendorPayment.sum("amount", {
+        where: { status: "completed" },
+      });
+
+      const outstandingReceivables = await CustomerInvoice.sum("balanceDue", {
+        where: { status: { [Op.in]: ["sent", "partial", "overdue"] } },
+      });
+
+      const outstandingPayables = await VendorBill.sum("balanceDue", {
+        where: {
+          status: { [Op.in]: ["received", "approved", "partial", "overdue"] },
+        },
+      });
+
+      res.json({
+        success: true,
+        data: {
+          overview: {
+            totalRevenue: totalRevenue || 0,
+            totalExpenses: totalExpenses || 0,
+            netIncome: (totalRevenue || 0) - (totalExpenses || 0),
+            outstandingReceivables: outstandingReceivables || 0,
+            outstandingPayables: outstandingPayables || 0,
+          },
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching dashboard data",
+        error: error.message,
+      });
+    }
+  }
+  async getAccountingMetrics(req, res) {
+    try {
+      // Add your specific metrics calculations here
+      res.json({
+        success: true,
+        data: {
+          metrics: {
+            // Placeholder metrics
+            cashFlow: 0,
+            profitMargin: 0,
+            currentRatio: 0,
+          },
+        },
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: "Error fetching accounting metrics",
+        error: error.message,
+      });
+    }
+  }
+
+  // ========== MISSING METHODS TO end ==========
 }
-module.exports = new AccountingController(); 
+module.exports = new AccountingController();
