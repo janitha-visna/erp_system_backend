@@ -30,6 +30,9 @@ const CashAccount = require("./CashAccount");
 const ExpenseCategory = require("./ExpenseCategory");
 const ExpenseReport = require("./ExpenseReport");
 const TaxConfiguration = require("./TaxConfiguration");
+const EmployeeProfile = require("./EmployeeProfile")
+const JobOpenings = require("./JobOpening")
+const OrganizationStructure = require("./OrganizationStructure");
 
 
 
@@ -285,4 +288,7 @@ module.exports = {
   ExpenseCategory,
   ExpenseReport,
   TaxConfiguration,
+  EmployeeProfile,
+  JobOpenings,
+  OrganizationStructure,
 };

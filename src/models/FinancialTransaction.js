@@ -65,7 +65,7 @@ const FinancialTransaction = sequelize.define("FinancialTransaction", {
   expenseId: {
     type: DataTypes.UUID,
     references: {
-      model: "Expenses",
+      model: "Expense",
       key: "id",
     },
   },

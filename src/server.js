@@ -33,10 +33,10 @@ app.use("/api/auth", require("./routes/authRoutes"));
 app.use("/api/hr", require("./routes/hrRoutes"));
 app.use("/api/finance", require("./routes/financeRoutes"));
 app.use("/api/accounting", require("./routes/accountingRoutes"));
-app.use("/api/ai", require("./routes/aiRoutes"));
-app.use("/api/analytics", require("./routes/analyticsRoutes"));
-app.use("/api/mobile", require("./routes/mobileRoutes"));
-app.use("/api/workflows", require("./routes/workflowRoutes"));
+//app.use("/api/ai", require("./routes/aiRoutes"));
+//app.use("/api/analytics", require("./routes/analyticsRoutes"));
+//app.use("/api/mobile", require("./routes/mobileRoutes"));
+//app.use("/api/workflows", require("./routes/workflowRoutes"));
 
 // Finance-specific health check
 app.get("/finance/health", async (req, res) => {
@@ -108,12 +108,13 @@ app.use((err, req, res, next) => {
 });
 
 // 404 handler
-app.use("*", (req, res) => {
+app.use((req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found",
   });
 });
+
 
 // Start server
 app.listen(PORT, () => {
